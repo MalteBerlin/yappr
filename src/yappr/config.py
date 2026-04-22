@@ -104,6 +104,11 @@ def save_user_config(
     CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def clear_user_config() -> None:
+    if CONFIG_PATH.exists():
+        CONFIG_PATH.unlink()
+
+
 def _escape_toml_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 

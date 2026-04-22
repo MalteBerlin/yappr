@@ -16,7 +16,14 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from yappr.audit import build_report
-from yappr.config import ConfigError, ensure_settings
+from yappr.config import (
+    CONFIG_PATH,
+    ConfigError,
+    clear_user_config,
+    ensure_settings,
+    load_user_config,
+    save_user_config,
+)
 from yappr.peec.client import PeecAPIError, PeecClient, PeecClientError
 from yappr.peec.models import (
     AIModel,
@@ -57,6 +64,61 @@ class Window:
 @app.callback()
 def main() -> None:
     """yappr CLI."""
+
+
+@app.command("key")
+def key(
+    set_key: Annotated[bool, typer.Option("--set", help="Save a Peec API key.")] = False,
+    clear: Annotated[bool, typer.Option("--clear", help="Delete saved credentials.")] = False,
+    show: Annotated[bool, typer.Option("--show", help="Show saved config status.")] = False,
+    project_id: Annotated[str | None, typer.Option("--project-id")] = None,
+    base_url: Annotated[str | None, typer.Option("--base-url")] = None,
+) -> None:
+    """Manage the saved Peec API key."""
+    if clear:
+        clear_user_config()
+        console.print(f"Cleared saved config at [bold]{CONFIG_PATH}[/bold]")
+        return
+
+    if show:
+        config = load_user_config()
+        table = Table(title="Saved Config", box=SIMPLE)
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("Path", str(CONFIG_PATH))
+        table.add_row("API key", "saved" if config.api_key else "missing")
+        table.add_row("Default project", config.default_project_id or "not set")
+        table.add_row("Base URL", config.base_url or "default")
+        console.print(table)
+        console.print("[dim]Env vars still override saved config.[/dim]")
+        return
+
+    if set_key or project_id or base_url:
+        config = load_user_config()
+        api_key = config.api_key
+        if set_key or not api_key:
+            api_key = typer.prompt("Peec API key", hide_input=True).strip()
+            if not api_key:
+                raise typer.Exit(code=1)
+        save_user_config(
+            api_key=api_key,
+            default_project_id=project_id,
+            base_url=base_url,
+        )
+        console.print(f"Saved config to [bold]{CONFIG_PATH}[/bold]")
+        console.print("[dim]You can now run `yappr audit yourdomain.com`.[/dim]")
+        return
+
+    config = load_user_config()
+    table = Table(title="Key Help", box=SIMPLE)
+    table.add_column("Command")
+    table.add_column("What it does")
+    table.add_row("yappr key --set", "Prompt for and save a Peec API key")
+    table.add_row("yappr key --show", "Show saved config status")
+    table.add_row("yappr key --clear", "Remove saved config")
+    console.print(table)
+    if config.api_key:
+        console.print("[dim]A saved key already exists.[/dim]")
 
 
 def _select_project(projects: list[Project], requested_project_id: str | None) -> Project:
