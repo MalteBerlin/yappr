@@ -12,7 +12,7 @@
   <code>uv run yappr audit yoursite.com</code>
 </p>
 
-`yappr` is a CLI for auditing how your brand shows up across AI search engines using Peec data.
+`yappr` is a CLI for auditing how your brand shows up across AI search engines using [Peec AI data](https://docs.peec.ai/api/introduction).
 
 ## What It Does
 
