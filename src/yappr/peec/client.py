@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from yappr.peec.models import Project, TabularResponse
+from yappr.peec.models import Brand, Project, TabularResponse
 
 
 class PeecClientError(RuntimeError):
@@ -43,6 +43,12 @@ class PeecClient:
         payload = self._request("GET", "/projects")
         rows = self._extract_rows(payload)
         return [Project.model_validate(row) for row in rows]
+
+    def list_brands(self, project_id: str | None = None) -> list[Brand]:
+        params = {"project_id": project_id} if project_id else None
+        payload = self._request("GET", "/brands", params=params)
+        rows = self._extract_rows(payload)
+        return [Brand.model_validate(row) for row in rows]
 
     def _request(
         self,

@@ -7,7 +7,7 @@ import typer
 
 from yappr.config import ConfigError, ensure_settings
 from yappr.peec.client import PeecAPIError, PeecClient, PeecClientError
-from yappr.peec.models import Project
+from yappr.peec.models import Brand, Project
 
 app = typer.Typer(
     add_completion=False,
@@ -35,6 +35,19 @@ def _select_project(projects: list[Project], requested_project_id: str | None) -
     )
 
 
+def _match_brand(brands: list[Brand], domain: str) -> Brand:
+    normalized = domain.lower().removeprefix("https://").removeprefix("http://").strip("/")
+    for brand in brands:
+        for tracked_domain in brand.domains:
+            if tracked_domain.lower().strip("/") == normalized:
+                return brand
+
+    raise ConfigError(
+        f"{domain} isn't tracked in this Peec project. "
+        "Use a tracked domain or add it in Peec first."
+    )
+
+
 @app.command()
 def audit(
     domain: str,
@@ -45,33 +58,51 @@ def audit(
     try:
         settings = ensure_settings(interactive=not json_output)
         with PeecClient(api_key=settings.api_key, base_url=settings.base_url) as client:
-            projects = client.list_projects()
+            try:
+                projects = client.list_projects()
+            except PeecAPIError as exc:
+                if "Not a Company API Key" not in str(exc):
+                    raise
+                projects = []
+
+            if projects:
+                requested_project_id = project_id or settings.default_project_id
+                selected_project = _select_project(projects, requested_project_id)
+                brands = client.list_brands(project_id=selected_project.id)
+                scope = "company"
+            else:
+                selected_project = None
+                brands = client.list_brands()
+                scope = "project"
     except ConfigError as exc:
         _exit_with_error(str(exc), json_output)
     except (PeecClientError, PeecAPIError) as exc:
         _exit_with_error(str(exc), json_output)
 
-    if not projects:
-        _exit_with_error("No Peec projects are available for this API key.", json_output)
-
     try:
-        selected_project = _select_project(projects, project_id or settings.default_project_id)
+        matched_brand = _match_brand(brands, domain)
     except ConfigError as exc:
         _exit_with_error(str(exc), json_output)
 
     if json_output:
+        payload = {
+            "domain": domain,
+            "scope": scope,
+            "brand": matched_brand.model_dump(),
+        }
+        if selected_project is not None:
+            payload["project"] = selected_project.model_dump()
         typer.echo(
-            json.dumps(
-                {
-                    "domain": domain,
-                    "project": selected_project.model_dump(),
-                }
-            )
+            json.dumps(payload)
         )
         return
 
     typer.echo(f"Auditing {domain}")
-    typer.echo(f"Project: {selected_project.name}")
+    typer.echo(f"Brand: {matched_brand.name}")
+    if selected_project is not None:
+        typer.echo(f"Project: {selected_project.name}")
+    else:
+        typer.echo("Project scope: project-scoped API key")
 
 
 def _exit_with_error(message: str, json_output: bool) -> None:
